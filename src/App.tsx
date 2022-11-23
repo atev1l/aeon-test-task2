@@ -68,11 +68,13 @@ const App: FunctionComponent = () => {
         project: {
             autoLoad: true,
             tasks: tasks,
-            validateResponse : true
+            validateResponse : true,
+            startDate: '2022-09-02',
+            endDate: '2022-09-08'
         },
         columns: [{ type: 'name', field: 'name', width: 250 }],
         viewPreset: 'weekAndDayLetter',
-        barMargin: 10
+        barMargin: 10,
 
     };
 
