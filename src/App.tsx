@@ -1,98 +1,149 @@
-import React, {Fragment, FunctionComponent, useEffect} from 'react';
+import React, {Fragment, FunctionComponent, useEffect, useState} from 'react';
+import {BryntumDemoHeader, BryntumThemeCombo, BryntumGantt} from '@bryntum/gantt-react';
+import {useActions} from "./hooks/useActions";
+import {useTypedSelector} from "./hooks/useTypedSelector";
 
-import { BryntumDemoHeader, BryntumThemeCombo, BryntumGantt } from '@bryntum/gantt-react';
 import './App.scss';
 
-const App: FunctionComponent = () => {
-    const tasks = [
-        {
-            "id": 1000,
-            "name": "Marketing Launch",
-            "startDate": "2022-09-02",
-            "expanded": true,
-            "manuallyScheduled" : true,
-            "children": [
-                {
-                    "id": 1,
-                    "name": "Banners for social networks",
-                    "startDate": "2022-09-02",
-                    "endDate": "2022-09-07",
-                    "expanded": true,
-                    "manuallyScheduled" : true,
-                    "children": [
-                        {
-                            "id": 21,
-                            "name": "Choosing a platform for ads",
-                            "startDate": "2022-09-02",
-                            "rollup": true,
-                            "endDate": "2022-09-06",
-                            "manuallyScheduled" : true,
-                            "expanded": true,
-                            "children": [
-                                {
-                                    "id": 31,
-                                    "name": "Custom issue level #4",
-                                    "startDate": "2022-09-03",
-                                    "rollup": true,
-                                    "endDate": "2022-09-05",
-                                    "manuallyScheduled" : true,
-                                    "expanded": true,
-                                    "children": [
-                                        {
-                                            "id": 41,
-                                            "name": "Custom issue level #5",
-                                            "startDate": "2022-09-04",
-                                            "rollup": true,
-                                            "endDate": "2022-09-05",
-                                            "manuallyScheduled" : true,
-                                        },
-                                        {
-                                            "id": 51,
-                                            "name": "Custom task",
-                                            "startDate": "2022-09-05",
-                                            "rollup": true,
-                                            "endDate": "2022-09-05",
-                                            "manuallyScheduled" : true,
-                                        }
-                                    ]
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ],
-            "endDate": "2022-09-08"
-        }
-    ]
-    const config = {
-        project: {
-            autoLoad: true,
-            tasks: tasks,
-            validateResponse : true,
-            startDate: '2022-09-02',
-            endDate: '2022-09-08'
-        },
-        columns: [{ type: 'name', field: 'name', width: 250 }],
-        viewPreset: 'weekAndDayLetter',
-        barMargin: 10,
+interface Table {
+    value: boolean
+}
 
-    };
+interface Project {
+    autoLoad: boolean,
+    tasks: Array<any>,
+    validateResponse: boolean,
+    startDate: string,
+    endDate: string,
+}
+
+interface Config {
+    project: Project,
+    columns: Array<any>,
+    viewPreset: string,
+    barMargin: number,
+}
+
+const App: FunctionComponent = () => {
+    const logsList = useTypedSelector(state => state.data.logs)
+    const {fetchLogs} = useActions()
+    const [tableVisiable, setTableVisiable] = useState<Table>()
+    const [config, setConfig] = useState<Config>();
 
     useEffect(() => {
-        fetch(`http://82.202.204.94/tmp/test.php`)
-            .then(res => res.json())
-            .then((res) => {
-                console.log(res)
-            });
+        fetchLogs()
     }, [])
 
+    useEffect(() => {
+        let currentValues: any[] = []
+        let finalArray: any[] = []
+        let indexItem = 1
+        if (logsList) {
+            //создание итогового массива для конфига таблицы
+            function buildTree(items: Array<any>, parent: any) {
+                parent = parent || null;
+                let result: any[] = [];
+                items.forEach((item) => {
+                    if (item.parent === parent) {
+                        result.push(item);
+
+                        item.children = buildTree(items, item.id);
+                        if (!item.children.length) {
+                            delete item.children;
+                        }
+                    }
+
+                });
+                return result;
+            }
+
+            //получение обработанного массива с API
+            function getArray(obj: any) {
+                if (obj) {
+                    currentValues.push({
+                        "id": indexItem,
+                        "name": obj.title,
+                        "startDate": "2022-09-02",
+                        "rollup": true,
+                        "endDate": "2022-09-06",
+                        "manuallyScheduled": true,
+                        "expanded": true,
+                        "parent": null
+                    })
+                    indexItem += 1
+                    let current = obj.sub
+                    currentValues.push({
+                        "id": indexItem,
+                        "name": current[0].title,
+                        "startDate": "2022-09-02",
+                        "rollup": true,
+                        "endDate": "2022-09-06",
+                        "manuallyScheduled": true,
+                        "expanded": true,
+                        "parent": indexItem - 1
+                    })
+
+                    while (current) {
+                        if (current['0'].sub !== undefined) {
+                            current = current[0].sub
+                            current.map((item: any) => {
+                                indexItem += 1
+                                currentValues.push({
+                                    "id": indexItem,
+                                    "name": item.title,
+                                    "startDate": item.period_start,
+                                    "rollup": true,
+                                    "endDate": item.period_end,
+                                    "manuallyScheduled": true,
+                                    "expanded": true,
+                                    "parent": indexItem - 1
+                                })
+                            })
+                        } else {
+                            current = undefined
+                        }
+                    }
+                }
+            }
+
+            getArray(logsList.chart)
+
+            if (currentValues.length) {
+                //выводим количество вложенных элементов
+                currentValues.map((item: any) => {
+                    item.name = `${item.name} - ${currentValues.length - item.id}`
+                })
+                finalArray = buildTree(currentValues, null)
+                setTableVisiable({value: true})
+            }
+
+            //устанавливаем итоговый конфиг для таблицы
+            setConfig({
+                project: {
+                    autoLoad: true,
+                    tasks: finalArray,
+                    validateResponse: true,
+                    startDate: '2022-09-02',
+                    endDate: '2022-09-08',
+                },
+                columns: [{type: 'name', field: 'name', width: 300}],
+                viewPreset: 'weekAndDayLetter',
+                barMargin: 10,
+            })
+        }
+    }, [logsList])
+
     return (
-        <Fragment>
-            <BryntumDemoHeader
-                children = {<BryntumThemeCombo />}
-            />
-            <BryntumGantt {...config} />
-        </Fragment>
+        <>
+            {tableVisiable?.value ?
+                <Fragment>
+                    <BryntumDemoHeader
+                        children={<BryntumThemeCombo/>}
+                    />
+                    <BryntumGantt {...config} />
+                </Fragment> : null
+            }
+        </>
     );
 };
 
